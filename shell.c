@@ -25,12 +25,19 @@ bool stringcompare(char* s, char* d){
 	return false;
 }
 
-char* stringcopy(char* d){
+char* stringcopy(char* d,int check,char c){
 	char* s=(char*)malloc(stringlength(d)+1);
 	if(stringlength(d)!=0){
-		int i;
-		for(i=0;d[i]!='\0';i++)
-			s[i]=d[i];
+		int i=0; int k=0;
+		if(check==1){
+			s[0]=c;
+			i++;
+		}
+		while(d[k]!='\0'){
+			s[i]=d[k];
+			i++;
+			k++;
+		}
 		s[i]='\0';
 	}
 	return s;
@@ -51,7 +58,7 @@ char* currentDir(){
 	char cwd[150];
 	if(getcwd(cwd,sizeof(cwd))!=NULL){
 		int size=stringlength(cwd);
-		char* raw=stringcopy(cwd);
+		char* raw=stringcopy(cwd,0,0);
 		return raw;
 	}
 	else{
@@ -61,37 +68,48 @@ char* currentDir(){
 }
 
 char* Input(){
-	char buffer[150];
+	char c;
 	printf("%c",'$');
 	printf("%c",' ');
-	scanf("%[^\n]%*c",buffer);
-	int size=stringlength(buffer);
-	if(size>0){
-		char* s=stringcopy(buffer);
-		return s;
+	c=getchar();
+	if(c!='\n'){
+		char buffer[150];
+		scanf("%[^\n]%*c",buffer);
+		int size=stringlength(buffer);
+		if(size>0){
+			char* s=stringcopy(buffer,1,c);
+			return s;
+		}
+		else{
+			printf("%s","size null");
+			return 0;
+		}
 	}
 	else{
-		printf("%s","size null");
-		return 0;
+		return NULL;
 	}
 }
 
 char* rawData(char* cmd){
-	char* raw=(char*)malloc(stringlength(cmd)+1);
 	int i=0;
-	while(cmd[i]!=' ')
+	while(cmd[i]!=' ' && cmd[i]!='\0')
 		i++;
 	i++;
-	int k=0;
-	for(int j=i;cmd[j]!='\0'; j++){
-		raw[k]=cmd[j];
-		k++;
+	if(cmd[i]!='\0'){
+		char* raw=(char*)malloc(stringlength(cmd)+1);
+		int k=0;
+		for(int j=i;cmd[j]!='\0'; j++){
+			raw[k]=cmd[j];
+			k++;
+		}
+		raw[k]='\0';
+		return raw;
 	}
-	raw[k]='\0';
-	return raw;
+	else
+		return NULL;
 }
 
-void execute(char* cmd, int cmdnumber){
+void execute(char* s, int cmdnumber){
 	int pid;
 	pid=fork();
 	if(pid<0)
@@ -100,13 +118,17 @@ void execute(char* cmd, int cmdnumber){
 	}
 	else if(pid==0){
 		if(cmdnumber==1){
-			int ret = execlp("/bin/ls","ls","-1",(char *)0);
+			if(s!=NULL){
+				int ret = execlp("/bin/ls","ls",s,(char *)0);
+			}
+			else if(s==NULL){
+				int ret = execlp("/bin/ls","ls","-1",(char *)0);
+			}
 		}
 		else if(cmdnumber==5){
-			int ret = execlp("/bin/touch","touch",cmd,(char *)0);		
+			int ret = execlp("/bin/touch","touch",s,(char *)0);		
 		}
 		else{
-			char* s=rawData(cmd);
 			if(cmdnumber==2){
 				int ret = execlp("/bin/mkdir","mkdir",s,(char *)0);
 			}
@@ -206,39 +228,40 @@ char* getfile(char* s, int check, char d){
 	return raw;
 }
 
-void makepipe(char* cmd,char* s,char* d){
+void makepipe(char* cmd,char* s,char* cmd1,char* d){
 	int pd[2];  
-	pid_t fd1, fd2; 
+	pid_t pid; 
 	pipe(pd);
   	 
-    	p1 = fork(); 	 
+    	pid = fork(); 	 
   
-    	if (fd1 == 0) { 
+    	if (pid == 0) { 
         	close(pd[0]); 
         	dup2(pd[1], STDOUT_FILENO); 
         	close(pd[1]); 
-  
-        	if (execvp(cmd,&s) < 0) { 
-            		printf("\nCould not execute command 1"); 
-            		exit(0); 
-        	} 
+		execlp(cmd, cmd, s,(char *)0);
+            	fprintf(stderr, "\nCould not execute command '%s'",cmd); 
+		exit(1); 
 	} 
 	else { 
 
-        	fd2 = fork();  
+        	pid = fork();  
   
-		if (fd2 == 0) { 
+		if (pid == 0) { 
 		    close(pd[1]); 
 		    dup2(pd[0], STDIN_FILENO); 
 		    close(pd[0]); 
-		    if (execvp(cmd,&d) < 0) { 
-		        printf("\nCould not execute command 2"); 
-		        exit(0); 
-		    } 
+		    execlp(cmd1, cmd1, d,(char *)0); 
+		    fprintf(stderr, "\nCould not execute command '%s'",cmd1);
+		    exit(1); 
 		} 
 		else { 
-		    wait(NULL); 
-		    wait(NULL); 
+			int status;
+			close(pd[0]);
+        		close(pd[1]);
+			waitpid(pid, &status, 0);
+			wait(NULL);
+			wait(NULL); 
 		} 
     	} 
 }
@@ -285,7 +308,17 @@ void command(char* cmd, bool mainflag){
 		char* sym=rawData(cmd);
 		char* sym1=getfile(sym,0,'|');
 		char* sym2=getfile(sym,1,'|');
-		makepipe(sym0,sym1,sym2);
+		if(checksym(cmd,1)){
+			char* sym3=getfile(sym2,0,'>');
+			char* sym4=getfile(sym2,1,'>');
+			makepipe(sym0,sym1,sym0,sym4);	
+			sortcommand(sym3,sym1,sym4);	
+		}
+		else{
+			char* sym3=getfile(sym2,0,' ');
+			char* sym4=getfile(sym2,1,' ');
+			makepipe(sym0,sym1,sym3,sym4);
+		}
 	}
 	else if(checksym(cmd,1)){
 		char* sym0=getcommand(cmd);// get command such as sort
@@ -347,10 +380,12 @@ void command(char* cmd, bool mainflag){
 				}		
 			}
 			else if(cmdnumber == 1){
-				execute(cmd,cmdnumber);
+				char* s=rawData(cmd);
+				execute(s,cmdnumber);
 			}
 			else if(cmdnumber == 2 || cmdnumber == 3){
-				execute(cmd,cmdnumber);
+				char* s=rawData(cmd);
+				execute(s,cmdnumber);
 			}
 			else if(cmdnumber == 4){
 				char* raw=rawData(cmd);
@@ -378,11 +413,14 @@ void command(char* cmd, bool mainflag){
 	}
 }
 int main(){
-	char* cmd; bool flag=false; 
+	char* cmd; bool flag=false;
 	while(flag!=true){
 		cddir();
 		cmd=Input();
-		command(cmd,flag);
+		if(cmd!=NULL){
+			command(cmd,flag);
+		}
+		cmd=NULL;
 	}
 	
 }
