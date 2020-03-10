@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <string.h>
 
 int stringlength(char* s){
@@ -90,26 +92,8 @@ char* Input(){
 	}
 }
 
-char* rawData(char* cmd){
-	int i=0;
-	while(cmd[i]!=' ' && cmd[i]!='\0')
-		i++;
-	i++;
-	if(cmd[i]!='\0'){
-		char* raw=(char*)malloc(stringlength(cmd)+1);
-		int k=0;
-		for(int j=i;cmd[j]!='\0'; j++){
-			raw[k]=cmd[j];
-			k++;
-		}
-		raw[k]='\0';
-		return raw;
-	}
-	else
-		return NULL;
-}
 
-void execute(char* s, int cmdnumber){
+void execute(char** cmd){
 	int pid;
 	pid=fork();
 	if(pid<0)
@@ -117,48 +101,18 @@ void execute(char* s, int cmdnumber){
 		printf("%s","exitcommand not exexuted\n");
 	}
 	else if(pid==0){
-		if(cmdnumber==1){
-			if(s!=NULL){
-				int ret = execlp("/bin/ls","ls",s,(char *)0);
-			}
-			else if(s==NULL){
-				int ret = execlp("/bin/ls","ls","-1",(char *)0);
-			}
-		}
-		else if(cmdnumber==5){
-			int ret = execlp("/bin/touch","touch",s,(char *)0);		
-		}
-		else{
-			if(cmdnumber==2){
-				int ret = execlp("/bin/mkdir","mkdir",s,(char *)0);
-			}
-			else if(cmdnumber==3){
-				int ret = execlp("/bin/rmdir","rmdir",s,(char *)0);		
-			}
-		}
+		if (execvp(cmd[0], cmd) < 0) { 
+            		printf("%s","Command \'"); 
+			printf("%s",cmd[0]);
+			printf("%s","\' not found\n");
+        	}
+		exit(0);
 	}
 	else{
 		wait(NULL);
 	}
 }
 
-
-char* touchseries(char* cmd,int n){
-	char* raw=(char*)malloc(stringlength(cmd)+1);
-	int i=0;
-	while(n>=0){
-		if(cmd[i]==' ')
-			n--;
-		i++;
-	}
-	int k=0;
-	for(int j=i;cmd[j]!=' ' && cmd[j]!='\0'; j++){
-		raw[k]=cmd[j];
-		k++;
-	}
-	raw[k]='\0';
-	return raw;
-}
 
 int numberofspace(char* cmd){
 	int count=0;
@@ -170,65 +124,65 @@ int numberofspace(char* cmd){
 }
 
 
-char* getcommand(char* cmd){
-	char* s=(char*)malloc(stringlength(cmd)+1);
-	int i; bool flag=false;
-	for(i=0;cmd[i]!='\0'; i++){
-		if(cmd[i]==' '){
-			break;
-		}
-		s[i]=cmd[i];
-	}
-	s[i]='\0';
-	return s;
-}
-
-bool checksym(char* s, int check){
+int checksym(char* s, int check){
 	char d;
 	if(check==0)
 		d='|';
 	else if(check==1)
 		d='>';
+	else if(check==2)
+		d='<';
+	int count=0;
 	for(int i=0;s[i]!='\0';i++){
 		if(s[i]==d){
-			return true;
+			count++;
 		}
 	}
-	return false;
+	return count;
 }
 
 char* getfile(char* s, int check, char d){
 	
-	char* raw=(char*)malloc(stringlength(s)+1);
-	if(check==0){
-		int i=0;
-		while(s[i]!=d){
-			raw[i]=s[i];
-			i++;
+	if(s!=NULL){
+		char* raw=(char*)malloc(stringlength(s)+1);
+		if(check==0){
+			int i=0;
+			while(s[i]!=d && s[i]!='\0'){
+				raw[i]=s[i];
+				i++;
+			}
+			if(raw[i-1]==' ')
+				raw[i-1]='\0';
+			else
+				raw[i]='\0';
 		}
-		if(raw[i-1]==' ')
-			raw[i-1]='\0';
-		else
-			raw[i]='\0';
-	}
-	else if(check==1){
-		int i=0;
-		while(s[i]!=d)
+		else if(check==1){
+			int i=0;
+			while(s[i]!=d && s[i]!='\0')
+				i++;
 			i++;
-		i++;
-		if(s[i]==' ')
-			i++;
-		int k=0;
-		for(int j=i;s[j]!='\0';j++){
-			raw[k]=s[j];
-			k++;		
+			if(s[i]==' ' && s[i]!='\0')
+				i++;
+			int k=0;
+			for(int j=i;s[j]!='\0';j++){
+				raw[k]=s[j];
+				k++;		
+			}
+			if(s[i]!='\0'){
+				raw[k]='\0';
+			}
+			else{
+				return 0;
+			}
 		}
-		raw[k]='\0';
+		return raw;
 	}
-	return raw;
+	else
+		return 0;
 }
 
-void makepipe(char* cmd,char* s,char* cmd1,char* d){
+
+void makepipe(char** cmd,char** cmd1){
 	int pd[2];  
 	pid_t pid; 
 	pipe(pd);
@@ -239,8 +193,8 @@ void makepipe(char* cmd,char* s,char* cmd1,char* d){
         	close(pd[0]); 
         	dup2(pd[1], STDOUT_FILENO); 
         	close(pd[1]); 
-		execlp(cmd, cmd, s,(char *)0);
-            	fprintf(stderr, "\nCould not execute command '%s'",cmd); 
+		if(execvp(cmd[0],cmd)<0)
+			perror("Command not executed");
 		exit(1); 
 	} 
 	else { 
@@ -251,103 +205,178 @@ void makepipe(char* cmd,char* s,char* cmd1,char* d){
 		    close(pd[1]); 
 		    dup2(pd[0], STDIN_FILENO); 
 		    close(pd[0]); 
-		    execlp(cmd1, cmd1, d,(char *)0); 
-		    fprintf(stderr, "\nCould not execute command '%s'",cmd1);
+		    if(execvp(cmd1[0],cmd1)<0)
+			perror("Command not executed");
 		    exit(1); 
 		} 
 		else { 
-			int status;
 			close(pd[0]);
         		close(pd[1]);
-			waitpid(pid, &status, 0);
 			wait(NULL);
 			wait(NULL); 
 		} 
     	} 
 }
 
-void sortcommand(char* sym0,char* sym1,char* sym2){
-	FILE* file; FILE* file1;
-	file=fopen(sym1,"r");
-	char buffer[100];
-	if(file!=NULL){
-		while(fgets(buffer,100, file) != NULL ) 
-		  	continue;
-		fclose(file);				
-		if(stringcompare(sym0,"sort")){
-			int size=stringlength(buffer);
-			for(int i=0;i<size-1;i++){
-				for(int j=0;j<size-i-1;j++){
-					if(buffer[j]>buffer[j+1]){
-						if(buffer[j+1]!='\n'){
-							char temp=buffer[j];
-							buffer[j]=buffer[j+1];
-							buffer[j+1]=temp;	
-						}	
-					}				
-				}				
-			}
+void sortcommand(char** cmd,char* raw, int check){
+	int out;
+
+	pid_t pid;
+	pid=fork();
+	if(pid==0){
+		if(check==1){
+  			out = open(raw, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+			dup2(out, 1);
 		}
-		file1=fopen(sym2,"w");
-		if(stringlength(buffer)>0){
-			fputs(buffer,file1);			
+		else if(check==2){
+			out= open(raw, O_RDONLY);
+			dup2(out, 0); 
 		}
-		fclose(file1);
+		close(out);
+  		execvp(cmd[0], cmd);
+		exit(0);
 	}
 	else{
-		printf("%s","sort: cannot read: ");
-		printf("%s",sym1);
-		printf("%s",": Not such file directory exist\n");
+		wait(NULL);
 	}
 }
 
-void command(char* cmd, bool mainflag){
+void sortpipe(char** cmd, char** cmd1, char* s){
 	
-	if(checksym(cmd,0)){
-		char* sym0=getcommand(cmd);
-		char* sym=rawData(cmd);
-		char* sym1=getfile(sym,0,'|');
-		char* sym2=getfile(sym,1,'|');
-		if(checksym(cmd,1)){
-			char* sym3=getfile(sym2,0,'>');
-			char* sym4=getfile(sym2,1,'>');
-			makepipe(sym0,sym1,sym0,sym4);	
-			sortcommand(sym3,sym1,sym4);	
-		}
-		else{
-			char* sym3=getfile(sym2,0,' ');
-			char* sym4=getfile(sym2,1,' ');
-			makepipe(sym0,sym1,sym3,sym4);
+	int pd[2];  
+	pid_t pid; 
+	close(1);
+	int out= open(s, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+	pipe(pd);
+  	 
+    	pid = fork(); 	 
+  
+    	if (pid == 0) { 
+        	close(pd[0]); 
+        	dup2(pd[1], out); 
+        	close(pd[1]); 
+		if(execvp(cmd[0],cmd)<0)
+			perror("Command not executed");
+		close(pd[1]);
+		exit(1); 
+	} 
+	else { 
+  		wait(NULL);
+		close(pd[1]); 
+		dup2(pd[0], STDIN_FILENO); 
+		close(pd[0]); 
+		if(execvp(cmd1[0],cmd1)<0)
+			perror("Command not executed");
+		close(pd[0]);
+		exit(1); 
+    	} 
+}
+
+
+void command(char* cmd, bool mainflag){
+	char* sym0; char* sym1; char* sym2; char* sym3; bool checkcmd=false; bool checkcmd1=false; bool checkcmd2=false; char ch;
+	char gch;
+	bool gcheck=false; 
+
+	if(checksym(cmd,0)==1){
+		checkcmd=true;
+		ch='|';
+		if(checksym(cmd,1)==1){
+			gcheck=true;
+			gch='>';
 		}
 	}
-	else if(checksym(cmd,1)){
-		char* sym0=getcommand(cmd);// get command such as sort
-		if(stringcompare(sym0,"sort") || stringcompare(sym0,"cat")){
-			char* sym=rawData(cmd);// get all data except command
-			char* sym1=getfile(sym,0,'>');// get first file before symbol >
-			char* sym2=getfile(sym,1,'>');// get second file which is written after symbol >
-			sortcommand(sym0,sym1,sym2);
+	else if(checksym(cmd,1)==1){
+		checkcmd1=true;
+		ch='>';	
+	}
+	else if(checksym(cmd,2)==1){
+		checkcmd2=true;
+		ch='<';
+	}
+	if(gcheck==true){
+		char* ecmd[4];
+		char* ecmd1[4];
+		sym0=getfile(cmd,0,ch);
+		sym1=getfile(cmd,1,ch);
+		sym2=getfile(sym1,0,gch);
+		sym3=getfile(sym1,1,gch);
+		int esize=numberofspace(sym0);
+		int esize1=numberofspace(sym2);
+		
+		char* sym4;char* sym5;
+		int i;
+		for(i=0;i<esize+1;i++){
+			sym4=getfile(sym0,0,' ');
+			ecmd[i]=sym4;
+			sym0=getfile(sym0,1,' ');
+		}
+		ecmd[i]=NULL;
+		for(i=0;i<esize1+1;i++){
+			sym5=getfile(sym2,0,' ');
+			ecmd1[i]=sym5;
+			sym2=getfile(sym2,1,' ');
+		}
+		ecmd1[i]=NULL;
+		pid_t pid;
+		pid=fork();
+		if(pid==0){
+			sortpipe(ecmd,ecmd1,sym3);
+		}
+		else 
+		{
+			wait(NULL);
+		}
+		
+	}
+	else if(checkcmd==true || checkcmd1==true || checkcmd2==true){
+		char* ecmd[4];
+		char* ecmd1[4];
+		sym0=getfile(cmd,0,ch);
+		sym1=getfile(cmd,1,ch);
+		int esize=numberofspace(sym0);
+		int esize1=numberofspace(sym1);
+
+		
+		int i;
+		for(i=0;i<esize+1;i++){
+			sym2=getfile(sym0,0,' ');
+			ecmd[i]=sym2;
+			sym0=getfile(sym0,1,' ');
+		}
+		ecmd[i]=NULL;
+		if(checkcmd==true){		
+			
+			for(i=0;i<esize1+1;i++){
+				sym3=getfile(sym1,0,' ');
+				ecmd1[i]=sym3;
+				sym1=getfile(sym1,1,' ');
+			}
+			ecmd1[i]=NULL;
 		}
 		else{
-			printf("%s","Command: \'"); 
-			printf("%s",sym0);
-			printf("%s","\' not found\n");
+			sym3=getfile(sym1,0,' ');
 		}
+		
+		if(checkcmd==true){
+			makepipe(ecmd,ecmd1);		
+		}
+		else{
+			if(checkcmd1==true)
+				sortcommand(ecmd,sym3,1);
+			else if(checkcmd2==true)
+				sortcommand(ecmd,sym3,2);
+		}
+		
 	}
-	else{
-		char* s=getcommand(cmd);
-		int sizeofcmd=9; bool flag=false;
+	else if(checksym(cmd,0)==0 && checksym(cmd,1)==0){
+		
+		char* s=getfile(cmd,0,' ');
+		int sizeofcmd=2; bool flag=false;
 
 		char* listcmd[sizeofcmd];
 		listcmd[0]="exit";
-		listcmd[1]="ls";
-		listcmd[2]="mkdir";
-		listcmd[3]="rmdir";
-		listcmd[4]="cd";
-		listcmd[5]="touch";
-		listcmd[6]="clear";
-		listcmd[7]="pwd";
-		listcmd[8]="rm";
+		listcmd[1]="cd";
 		
 		int cmdnumber=-1; 
 
@@ -362,33 +391,8 @@ void command(char* cmd, bool mainflag){
 				exit(0);
 				mainflag=true;
 			}
-			else if(cmdnumber == 6){
-				system("clear");	
-			}
-			else if(cmdnumber == 7){
-				cddir();
-				printf("%c",'\n');		
-			}
-			else if(cmdnumber == 8){
-				for(int i=0;i<numberofspace(cmd);i++){
-					char* raw=touchseries(cmd,i);
-					if(remove(raw)!=0){
-						printf("%s","rm: cannot remove: \'");
-						printf("%s",raw);
-						printf("%s","\' No such File Directory exist\n");				
-					}	
-				}		
-			}
 			else if(cmdnumber == 1){
-				char* s=rawData(cmd);
-				execute(s,cmdnumber);
-			}
-			else if(cmdnumber == 2 || cmdnumber == 3){
-				char* s=rawData(cmd);
-				execute(s,cmdnumber);
-			}
-			else if(cmdnumber == 4){
-				char* raw=rawData(cmd);
+				char* raw=getfile(cmd,1,' ');
 				char* fileDir=currentDir();
 				chdir(raw);
 				char* rawDir=currentDir();
@@ -398,18 +402,33 @@ void command(char* cmd, bool mainflag){
 					printf("%s","\' No such File Directory exist\n");
 				}		
 			}
-			else if(cmdnumber == 5){
-				for(int i=0;i<numberofspace(cmd);i++){
-					char* raw=touchseries(cmd,i);
-					execute(raw,cmdnumber);	
-				}	
-			}
 		}
 		else{
-			printf("%s","Command: \'"); 
-			printf("%s",s);
-			printf("%s","\' not found, but can be install by adding in command List \n");
+			char* simplecmd[100];
+			int i; 
+			int size=numberofspace(cmd);
+			sym0=NULL;
+  
+    			for (i = 0; i < size+1; i++) { 
+        			sym0=getfile(cmd,0,' ');
+				simplecmd[i]=sym0;
+				cmd=getfile(cmd,1,' ');
+    			} 
+			simplecmd[i]=NULL;
+			execute(simplecmd);
 		}
+	}
+	else if(checksym(cmd, 0)>1 || checksym(cmd, 1)>1){
+		
+		char* cd=(char*)malloc(20);
+		if(checksym(cmd, 0)>1)
+			strcpy(cd, "has more than one pipe");
+		if(checksym(cmd, 1)>1)
+			strcpy(cd,"has more than one redirection"); 
+		
+		printf("%s", "That command contain ");
+		printf("%s",cd);
+		printf("%c",'\n');
 	}
 }
 int main(){
@@ -420,7 +439,6 @@ int main(){
 		if(cmd!=NULL){
 			command(cmd,flag);
 		}
-		cmd=NULL;
 	}
 	
 }
