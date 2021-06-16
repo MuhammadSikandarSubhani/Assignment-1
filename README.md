@@ -1,5 +1,3 @@
 # Assignment-1
-This repository for Assignment 1 Shell of operating system
-L174196
-Muhammad Sikandar Subhani
-CS-6A
+This repository is about C program which work exactly like Shell of Ubuntu
+Its works every command which is specifically run by Terminal of Ubuntu
